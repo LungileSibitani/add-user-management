@@ -1,0 +1,255 @@
+<template>
+  <div id="app">
+    <header>
+      <h1>Happiness Dashboard</h1>
+    </header>
+
+    <section class="users-section">
+      <h2>Users</h2>
+      <div class="users-grid">
+        <div class="user-card" v-for="user in users" :key="user.id">
+          <p class="user-name">{{ user.first_name }} {{ user.last_name }}</p>
+          <p class="user-email">{{ user.email }}</p>
+          <div class="user-actions">
+            <button @click="editUser(user)" class="edit-btn">Edit</button>
+            <button @click="deleteUser(user.id)" class="delete-btn">Delete</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="form-section">
+      <h2>{{ isEditing ? "Edit User" : "Add User" }}</h2>
+      <form @submit.prevent="submitUser" class="user-form">
+        <div class="form-row">
+          <input v-model="currentUser.username" type="text" placeholder="Username" required />
+          <input v-model="currentUser.first_name" type="text" placeholder="First Name" required />
+          <input v-model="currentUser.last_name" type="text" placeholder="Last Name" required />
+        </div>
+        <div class="form-row">
+          <input v-model="currentUser.email" type="email" placeholder="Email" required />
+          <input v-model="currentUser.password" type="password" placeholder="Password" required v-if="!isEditing" />
+        </div>
+        <div class="form-actions">
+          <button type="submit">{{ isEditing ? "Update" : "Create" }}</button>
+          <button type="button" @click="cancelEdit" v-if="isEditing" class="cancel-btn">Cancel</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</template>
+
+<script>
+import { ref, onMounted } from "vue";
+import api from "./services/api";
+
+export default {
+  setup() {
+    const users = ref([]);
+    const error = ref("");
+    const isEditing = ref(false);
+    const currentUser = ref({
+      id: null,
+      username: "",
+      first_name: "",
+      last_name: "",
+      email: "",
+      password: ""
+    });
+
+    const fetchUsers = async () => {
+      try {
+        const res = await api.get("/users");
+        users.value = res.data;
+      } catch (err) {
+        console.error(err);
+        error.value = "Failed to fetch users.";
+      }
+    };
+
+    const submitUser = async () => {
+      try {
+        if (isEditing.value) {
+          const payload = {
+  username: currentUser.value.username,
+  first_name: currentUser.value.first_name,
+  last_name: currentUser.value.last_name,
+  email: currentUser.value.email,
+  password: currentUser.value.password // backend will hash
+};
+await api.put(`/users/${currentUser.value.id}`, payload);
+
+        } else {
+          const res = await api.post("/users", currentUser.value);
+          users.value.push(res.data);
+        }
+        currentUser.value = { id: null, username: "", first_name: "", last_name: "", email: "", password: "" };
+        isEditing.value = false;
+      } catch (err) {
+        console.error(err);
+        error.value = "Failed to submit user.";
+      }
+    };
+
+    const editUser = (user) => {
+      currentUser.value = { ...user };
+      isEditing.value = true;
+    };
+
+    const cancelEdit = () => {
+      currentUser.value = { id: null, username: "", first_name: "", last_name: "", email: "", password: "" };
+      isEditing.value = false;
+    };
+
+    const deleteUser = async (id) => {
+      try {
+        await api.delete(`/users/${id}`);
+        users.value = users.value.filter(u => u.id !== id);
+      } catch (err) {
+        console.error(err);
+        error.value = "Failed to delete user.";
+      }
+    };
+
+    onMounted(fetchUsers);
+
+    return { users, error, currentUser, submitUser, editUser, cancelEdit, deleteUser, isEditing };
+  }
+};
+</script>
+
+<style>
+/* Dashboard Styles */
+#app {
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  max-width: 900px;
+  margin: 20px auto;
+  padding: 20px;
+}
+
+header h1 {
+  text-align: center;
+  color: #1f2937;
+  font-size: 2.2rem;
+  margin-bottom: 30px;
+}
+
+.users-section h2,
+.form-section h2 {
+  color: #1f2937;
+  margin-bottom: 15px;
+}
+
+.users-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.user-card {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.user-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+}
+
+.user-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 5px;
+}
+
+.user-email {
+  font-size: 0.95rem;
+  color: #6b7280;
+  margin-bottom: 10px;
+}
+
+.user-actions button {
+  margin-right: 5px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.edit-btn {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.edit-btn:hover {
+  background-color: #2563eb;
+}
+
+.delete-btn {
+  background-color: #ef4444;
+  color: white;
+}
+
+.delete-btn:hover {
+  background-color: #b91c1c;
+}
+
+/* Form Styles */
+.user-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.form-row {
+  display: flex;
+  gap: 10px;
+}
+
+.form-row input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.form-actions button {
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  color: white;
+  font-weight: 500;
+  transition: 0.2s;
+}
+
+.form-actions button[type="submit"] {
+  background-color: #10b981;
+}
+
+.form-actions button[type="submit"]:hover {
+  background-color: #059669;
+}
+
+.cancel-btn {
+  background-color: #6b7280;
+}
+
+.cancel-btn:hover {
+  background-color: #4b5563;
+}
+</style>
+
