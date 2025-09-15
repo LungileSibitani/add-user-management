@@ -26,12 +26,14 @@
       <input
         v-model="search"
         type="text"
-        placeholder="Search users..."
+        placeholder="Search users by ID, username, email..."
         class="table-search"
+        @input="resetAndFetch"
       />
       <table>
         <thead>
           <tr>
+            <th>ID</th>
             <th>Email</th>
             <th>Username</th>
             <th>First</th>
@@ -40,7 +42,8 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="user in filteredUsers" :key="user.id">
+          <tr v-for="user in users" :key="user.id">
+            <td>{{ user.id }}</td>
             <td>{{ user.email }}</td>
             <td>{{ user.username }}</td>
             <td>{{ user.first_name }}</td>
@@ -52,6 +55,13 @@
           </tr>
         </tbody>
       </table>
+
+      <!-- Load More -->
+      <button v-if="!loading && hasMore" @click="loadMore" class="btn toggle-btn">
+        ⬇ Load More
+      </button>
+      <p v-if="loading">Loading...</p>
+      <p v-if="!hasMore && users.length > 0">✅ All users loaded</p>
     </div>
 
     <!-- Edit Modal -->
@@ -92,33 +102,55 @@ export default {
       },
       isEditing: false,
       editUser: {},
+
+      // Pagination
+      page: 1,
+      limit: 50,
+      hasMore: true,
+      loading: false,
     };
   },
-  computed: {
-    filteredUsers() {
-      if (!this.search) return this.users;
-      return this.users.filter(user =>
-        Object.values(user)
-          .join(" ")
-          .toLowerCase()
-          .includes(this.search.toLowerCase())
-      );
-    },
-  },
   methods: {
-    async fetchUsers() {
+    async fetchUsers(reset = false) {
       try {
-        const res = await axios.get("http://localhost:8080/api/users");
-        this.users = res.data;
+        this.loading = true;
+        const res = await axios.get(
+          `http://localhost:8080/api/users?page=${this.page}&limit=${this.limit}&q=${this.search}`
+        );
+        const data = res.data.data || res.data; // handle both formats
+
+        if (reset) {
+          this.users = data;
+        } else {
+          this.users = [...this.users, ...data];
+        }
+
+        if (data.length < this.limit) {
+          this.hasMore = false; // no more data
+        }
       } catch (err) {
         console.error("Failed to fetch users:", err);
+      } finally {
+        this.loading = false;
+      }
+    },
+    resetAndFetch() {
+      this.page = 1;
+      this.hasMore = true;
+      this.users = [];
+      this.fetchUsers(true);
+    },
+    loadMore() {
+      if (this.hasMore) {
+        this.page++;
+        this.fetchUsers();
       }
     },
     async addUser() {
       try {
         await axios.post("http://localhost:8080/api/users", this.newUser);
         this.newUser = { email: "", username: "", first_name: "", last_name: "", password_hash: "" };
-        this.fetchUsers();
+        this.resetAndFetch();
       } catch (err) {
         console.error("Failed to add user:", err);
       }
@@ -126,7 +158,7 @@ export default {
     async deleteUser(id) {
       try {
         await axios.delete(`http://localhost:8080/api/users/${id}`);
-        this.fetchUsers();
+        this.resetAndFetch();
       } catch (err) {
         console.error("Failed to delete user:", err);
       }
@@ -139,20 +171,23 @@ export default {
       try {
         await axios.put(`http://localhost:8080/api/users/${this.editUser.id}`, this.editUser);
         this.isEditing = false;
-        this.fetchUsers();
+        this.resetAndFetch();
       } catch (err) {
         console.error("Failed to update user:", err);
       }
     },
   },
   mounted() {
-    this.fetchUsers();
+    this.fetchUsers(true);
   },
 };
 </script>
 
+
+
+
 <style>
-/* Background */
+
 .app-container {
   font-family: "Segoe UI", sans-serif;
   padding: 2rem;

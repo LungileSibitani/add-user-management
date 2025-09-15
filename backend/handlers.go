@@ -7,13 +7,33 @@ import (
     "github.com/gin-gonic/gin"
 )
 
-// GetUsers - fetch all users
+
+// GetUsers - fetch paginated users
 func GetUsers(c *gin.Context) {
-    rows, err := DB.Query(`
-        SELECT id, username, first_name, last_name, email
-        FROM users
-        WHERE deleted_at IS NULL
-    `)
+    search := c.Query("q")
+    page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+    limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+    offset := (page - 1) * limit
+
+    query := `
+    SELECT id, username, first_name, last_name, email
+    FROM users
+    WHERE deleted_at IS NULL
+      AND (
+          CAST(id AS CHAR) LIKE ?   -- allow searching by ID
+          OR username LIKE ?
+          OR email LIKE ?
+      )
+    LIMIT ? OFFSET ?
+`
+rows, err := DB.Query(query,
+    "%"+search+"%",
+    "%"+search+"%",
+    "%"+search+"%",
+    limit, offset)
+
+
+    rows, err := DB.Query(query, "%"+search+"%", "%"+search+"%", limit, offset)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -23,16 +43,36 @@ func GetUsers(c *gin.Context) {
     var users []User
     for rows.Next() {
         var u User
-        err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.LastName, &u.Email)
-        if err != nil {
+        if err := rows.Scan(&u.ID, &u.Username, &u.FirstName, &u.LastName, &u.Email); err != nil {
             c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
             return
         }
         users = append(users, u)
     }
 
-    c.JSON(http.StatusOK, users)
+    // count total
+    var total int
+    countQuery := `
+        SELECT COUNT(*) 
+        FROM users 
+        WHERE deleted_at IS NULL
+          AND (username LIKE ? OR email LIKE ?)
+    `
+    if err := DB.QueryRow(countQuery, "%"+search+"%", "%"+search+"%").Scan(&total); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{
+        "users": users,
+        "total": total,
+        "page":  page,
+        "limit": limit,
+    })
 }
+
+
+
 
 // GetUserByID - fetch single user
 func GetUserByID(c *gin.Context) {
